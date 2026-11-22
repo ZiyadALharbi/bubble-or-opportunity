@@ -17,14 +17,6 @@
   --arabic:"IBM Plex Sans Arabic","Geeza Pro","Segoe UI",Tahoma,sans-serif;
   color-scheme:light;
 }
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]){
-    --bg:#121211; --surface:#1C1C1A; --ink:#ECEAE4; --ink-2:#C4C0B7; --muted:#8E8A81;
-    --line:#2D2C29; --accent:#72C6A7; --accent-soft:#1D2F28; --sel:#5C4B17;
-    --shadow:0 1px 2px rgba(0,0,0,.4),0 16px 48px -8px rgba(0,0,0,.6);
-    color-scheme:dark;
-  }
-}
 :root[data-theme="dark"]{
   --bg:#121211; --surface:#1C1C1A; --ink:#ECEAE4; --ink-2:#C4C0B7; --muted:#8E8A81;
   --line:#2D2C29; --accent:#72C6A7; --accent-soft:#1D2F28; --sel:#5C4B17;
@@ -1024,12 +1016,12 @@ const GLOSSARY = [
   const store={get(k){try{return localStorage.getItem(k)}catch(e){return null}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
   const markBtn=$("#markBtn");
   function setMarks(on){ document.body.classList.toggle("marks",on); markBtn.setAttribute("aria-pressed",on); store.set("reader.marks",on?"1":"0"); }
-  setMarks(store.get("reader.marks")==="1");
+  setMarks(store.get("reader.marks")!=="0");
   markBtn.onclick=()=>setMarks(!document.body.classList.contains("marks"));
   const root=document.documentElement;
   const saved=store.get("reader.theme"); if(saved) root.dataset.theme=saved;
   $("#themeBtn").onclick=()=>{
-    const dark = root.dataset.theme ? root.dataset.theme==="dark" : matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = root.dataset.theme==="dark";
     root.dataset.theme = dark?"light":"dark"; store.set("reader.theme",root.dataset.theme);
   };
 
