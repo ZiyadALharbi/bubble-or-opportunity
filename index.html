@@ -87,6 +87,7 @@ body.marks .term:hover{background-color:var(--accent-soft)}
 .pop.show{opacity:1;transform:none;pointer-events:auto}
 .pop-head{position:sticky;top:0;background:var(--surface);padding:16px 18px 12px;border-bottom:1px solid var(--line);
   display:grid;grid-template-columns:1fr auto;gap:2px 12px;align-items:start}
+.grab{display:none}
 .pop-term{font:600 19px/1.25 var(--serif);letter-spacing:-.005em}
 .pop-arT{grid-column:1;font:500 16px/1.5 var(--arabic);color:var(--accent);direction:rtl;text-align:left}
 .pop-x{grid-row:1/span 2;grid-column:2;width:30px;height:30px;border-radius:50%;border:0;background:transparent;color:var(--muted);
@@ -115,11 +116,15 @@ body.marks .term:hover{background-color:var(--accent-soft)}
   body{font-size:18.5px}
   header.top{padding-top:36px}
   figure{margin:1.8em 0}
-  .pop{position:fixed;left:0!important;right:0;bottom:0;top:auto!important;width:100%;max-height:62vh;
-    border-radius:18px 18px 0 0;border-bottom:0;transform:translateY(16px)}
+  .pop{position:fixed;left:0!important;right:0;bottom:0;top:auto!important;width:100%;max-height:60vh;
+    border-radius:18px 18px 0 0;border-bottom:0;transform:translateY(16px);
+    transition:opacity .14s ease,transform .24s cubic-bezier(.2,.8,.2,1),height .28s cubic-bezier(.2,.8,.2,1)}
   .pop.show{transform:none}
-  .pop::before{content:"";display:block;width:36px;height:4px;border-radius:4px;background:var(--line);margin:8px auto 0;position:sticky;top:8px;z-index:2}
-  .pop-head{padding-top:10px}
+  .pop.dragging{transition:none}
+  .pop-head{padding-top:26px;touch-action:none;cursor:grab;-webkit-user-select:none;user-select:none}
+  .grab{display:flex;position:absolute;top:0;left:0;right:0;height:24px;align-items:center;justify-content:center}
+  .grab span{width:40px;height:5px;border-radius:5px;background:var(--line)}
+  .pop-body{padding-bottom:72px}
   .tbtn .txt{display:none}
 }
 
@@ -916,7 +921,7 @@ const GLOSSARY = [
   const pop=$("#pop"); let state={open:false,pinned:false}; let downInPop=false;
   const isMobile=()=>matchMedia("(max-width:640px)").matches;
   function cardHTML(g, others){
-    let h=`<div class="pop-head"><div class="pop-term">${esc(g.t)}</div><button class="pop-x" aria-label="Close" data-close>
+    let h=`<div class="pop-head"><div class="grab"><span></span></div><div class="pop-term">${esc(g.t)}</div><button class="pop-x" aria-label="Close" data-close>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       <div class="pop-arT" lang="ar">${esc(g.arT)}</div></div><div class="pop-body">
       <div class="sec"><div class="lbl">Meaning</div><p>${esc(g.en)}</p></div>
@@ -927,7 +932,7 @@ const GLOSSARY = [
   }
   function missHTML(text){
     const q=encodeURIComponent(text);
-    return `<div class="pop-head"><div class="pop-term">“${esc(text.length>80?text.slice(0,80)+"…":text)}”</div><button class="pop-x" aria-label="Close" data-close>
+    return `<div class="pop-head"><div class="grab"><span></span></div><div class="pop-term">“${esc(text.length>80?text.slice(0,80)+"…":text)}”</div><button class="pop-x" aria-label="Close" data-close>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
       <div class="pop-body"><p class="miss">This one isn’t in the article’s glossary yet.<br><span class="ar" lang="ar" style="font-family:var(--arabic)">هذه العبارة غير موجودة في المسرد.</span></p>
       <div class="links"><a target="_blank" rel="noopener" href="https://translate.google.com/?sl=en&tl=ar&text=${q}&op=translate">Translate to Arabic ↗</a>
@@ -941,13 +946,56 @@ const GLOSSARY = [
     let left = Math.min(Math.max(rect.left+rect.width/2-w/2,16), vw-w-16);
     pop.style.top=(top+scrollY)+"px"; pop.style.left=(left+scrollX)+"px";
   }
+  function resetSheet(){ pop.style.height=""; pop.style.maxHeight=""; pop.style.transform=""; pop.classList.remove("dragging"); }
   function show(html, rect, pinned){
-    pop.innerHTML=html; pop.scrollTop=0; pop.classList.add("show");
+    resetSheet(); pop.innerHTML=html; pop.scrollTop=0; pop.classList.add("show");
     state={open:true,pinned:!!pinned,rect}; place(rect);
   }
-  function hide(){ pop.classList.remove("show"); state={open:false,pinned:false}; }
+  function hide(){ pop.classList.remove("show"); state={open:false,pinned:false}; setTimeout(()=>{ if(!pop.classList.contains("show")) resetSheet(); },260); }
 
-  pop.addEventListener("pointerdown",()=>{downInPop=true;});
+  /* ---------- draggable bottom sheet (mobile) ---------- */
+  const vh=()=>window.visualViewport?visualViewport.height:innerHeight;
+  let drag=null, suppressClick=false;
+  pop.addEventListener("pointerdown",e=>{
+    downInPop=true;
+    if(!isMobile()||!e.target.closest(".pop-head")) return;
+    const chrome=pop.offsetHeight-pop.clientHeight;
+    drag={id:e.pointerId,y0:e.clientY,h0:pop.offsetHeight,full:Math.min(vh()*0.92,pop.scrollHeight+chrome),
+          moved:false,lastY:e.clientY,lastT:e.timeStamp,v:0};
+  });
+  pop.addEventListener("pointermove",e=>{
+    if(!drag||e.pointerId!==drag.id) return;
+    const dy=e.clientY-drag.y0;
+    if(!drag.moved){
+      if(Math.abs(dy)<6) return;
+      drag.moved=true; try{pop.setPointerCapture(e.pointerId);}catch(_){}
+      pop.classList.add("dragging"); pop.style.maxHeight="none"; pop.style.height=drag.h0+"px";
+    }
+    const want=drag.h0-dy;
+    if(want>=120){ pop.style.height=Math.min(vh()*0.94,want)+"px"; pop.style.transform=""; }
+    else { pop.style.height="120px"; pop.style.transform=`translateY(${120-want}px)`; }
+    const dt=e.timeStamp-drag.lastT; if(dt>0) drag.v=(e.clientY-drag.lastY)/dt;
+    drag.lastY=e.clientY; drag.lastT=e.timeStamp; e.preventDefault();
+  });
+  function endDrag(){
+    if(!drag) return; const d=drag; drag=null; if(!d.moved) return;
+    suppressClick=true; setTimeout(()=>suppressClick=false,80);
+    pop.classList.remove("dragging");
+    const H=vh(), h=pop.offsetHeight-(parseFloat((pop.style.transform.match(/[\d.]+/)||[0])[0])||0);
+    const full=d.full, half=Math.min(H*0.6,full);
+    const moved=d.lastY-d.y0;
+    if((d.v>0.9 && moved>40) || h<H*0.25){
+      pop.style.transform=`translateY(${pop.offsetHeight+20}px)`;
+      setTimeout(()=>{ hide(); getSelection().removeAllRanges(); },200);
+      return;
+    }
+    pop.style.transform="";
+    const target = (d.v<-0.5 && moved<-40) ? full : (Math.abs(h-full)<Math.abs(h-half) ? full : half);
+    pop.style.height=target+"px";
+  }
+  pop.addEventListener("pointerup",endDrag);
+  pop.addEventListener("pointercancel",endDrag);
+  pop.addEventListener("click",e=>{ if(suppressClick){ e.stopImmediatePropagation(); e.preventDefault(); } },true);
   pop.addEventListener("mousedown",e=>{ if(!e.target.closest("a")) e.preventDefault(); });
   pop.addEventListener("click",e=>{
     if(e.target.closest("[data-close]")){ hide(); getSelection().removeAllRanges(); return; }
